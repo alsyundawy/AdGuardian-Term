@@ -325,11 +325,18 @@ pub async fn welcome() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         format!("The {} environmental variable is not yet set", key.bold()).yellow()
       );
-      print!("{}", format!("› Enter a value for {}: ", key).blue().bold());
-      io::stdout().flush()?;
+      let prompt = format!("› Enter a value for {}: ", key).blue().bold();
 
-      let mut value = String::new();
-      io::stdin().read_line(&mut value)?;
+      let value = if key.contains("PASSWORD") {
+        // For the `PASSWORD` fields, prevent input showing on console
+        rpassword::prompt_password(prompt)?
+      } else {
+        print!("{}", prompt);
+        io::stdout().flush()?;
+        let mut value = String::new();
+        io::stdin().read_line(&mut value)?;
+        value
+      };
       env::set_var(key, value.trim());
     }
   }

@@ -31,6 +31,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Read and calculate semantic version numbers
 semver = "1.0"
+# Read passwords from the terminal without echoing them
+rpassword = "7.3"
 # Date + time manipulation
 tokio = { version = "1", features = ["full"] }
 # Terminal UI library

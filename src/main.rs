@@ -73,10 +73,11 @@ async fn run() -> anyhow::Result<()> {
     shutdown_tx,
   ));
 
-  // Get update interval (in seconds)
+  // Get update interval (in seconds), clamped to at least 1 (interval() panics on zero)
   let interval_secs: u64 = env::var("ADGUARD_UPDATE_INTERVAL")
     .unwrap_or_else(|_| "2".into())
-    .parse()?;
+    .parse::<u64>()?
+    .max(1);
   let mut interval = interval(Duration::from_secs(interval_secs));
   interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -115,7 +116,7 @@ async fn run() -> anyhow::Result<()> {
 }
 
 fn main() {
-  let rt = tokio::runtime::Runtime::new().unwrap();
+  let rt = tokio::runtime::Runtime::new().expect("failed to start async runtime");
   rt.block_on(async {
     welcome::welcome().await.unwrap_or_else(|e| {
       eprintln!("Failed to initialize: {}", e);

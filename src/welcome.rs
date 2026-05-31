@@ -478,7 +478,10 @@ pub async fn welcome() -> Result<(), Box<dyn std::error::Error>> {
 
   if connected.is_err() {
     print_error(
-      &format!("Could not reach AdGuard at {}:{} after 3 attempts", ip, port),
+      &format!(
+        "Could not reach AdGuard at {}:{} after 3 attempts",
+        ip, port
+      ),
       "Please check that AdGuard Home is running and your settings are correct.",
       None,
     );

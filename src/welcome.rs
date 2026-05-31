@@ -8,6 +8,7 @@ use reqwest::{Client, Error};
 use std::{
   cmp::Ordering,
   env,
+  fmt::Display,
   io::{self, IsTerminal, Write},
   time::Duration,
 };
@@ -123,14 +124,54 @@ fn check_version(version: Option<&str>) {
   }
 }
 
-/// With the users specified AdGuard details, verify the connection (exit on fail)
+/// Run an async operation, retrying on error up to `attempts` times, `delay` apart.
+/// Each failure is reported; the last error is returned once attempts are exhausted.
+pub async fn with_retries<T, E, F, Fut>(
+  attempts: u32,
+  delay: Duration,
+  label: &str,
+  mut operation: F,
+) -> Result<T, E>
+where
+  F: FnMut() -> Fut,
+  Fut: std::future::Future<Output = Result<T, E>>,
+  E: Display,
+{
+  let mut attempt = 1;
+  loop {
+    match operation().await {
+      Ok(value) => return Ok(value),
+      Err(e) if attempt < attempts => {
+        println!(
+          "{}",
+          format!(
+            "{} failed (attempt {}/{}): {}\nRetrying in {}s...",
+            label,
+            attempt,
+            attempts,
+            e,
+            delay.as_secs()
+          )
+          .yellow()
+        );
+        tokio::time::sleep(delay).await;
+        attempt += 1;
+      }
+      Err(e) => return Err(e),
+    }
+  }
+}
+
+/// With the users specified AdGuard details, verify the connection.
+/// Returns `Err` on a failed connection (so the caller can retry); exits on
+/// rejected auth or an unsupported version, which retrying wouldn't fix.
 async fn verify_connection(
   client: &Client,
-  ip: String,
-  port: String,
-  protocol: String,
-  username: String,
-  password: String,
+  ip: &str,
+  port: &str,
+  protocol: &str,
+  username: &str,
+  password: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
   println!(
     "{}",
@@ -169,12 +210,8 @@ async fn verify_connection(
       "Check the credentials you passed as environmental variables and try again.",
       None,
     ),
-    // Connection failed to establish. Print error and exit
-    Err(e) => print_error(
-      &format!("Failed to connect to AdGuard at: {}:{}", ip, port),
-      "Please check your environmental variables and try again.\n",
-      Some(&e),
-    ),
+    // Connection failed to establish - return so the caller can retry
+    Err(e) => Err(e.into()),
   }
 }
 
@@ -433,8 +470,19 @@ pub async fn welcome() -> Result<(), Box<dyn std::error::Error>> {
   let username = get_env("ADGUARD_USERNAME")?;
   let password = get_env("ADGUARD_PASSWORD")?;
 
-  // Verify that we can connect, authenticate, and that version is supported (exit on failure)
-  verify_connection(&client, ip, port, protocol, username, password).await?;
+  // Verify we can connect, authenticate, and that the version is supported
+  let connected = with_retries(3, Duration::from_secs(5), "AdGuard connection", || {
+    verify_connection(&client, &ip, &port, &protocol, &username, &password)
+  })
+  .await;
+
+  if connected.is_err() {
+    print_error(
+      &format!("Could not reach AdGuard at {}:{} after 3 attempts", ip, port),
+      "Please check that AdGuard Home is running and your settings are correct.",
+      None,
+    );
+  }
 
   Ok(())
 }

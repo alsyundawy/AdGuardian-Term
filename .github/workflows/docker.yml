@@ -3,8 +3,11 @@
 # Triggered by git tag creation, which publishes to the same docker tag.
 # Each platform is built on its own runner in parallel and pushed by digest;
 # a final merge job stitches the digests into one manifest list per registry,
-# then attaches provenance + SBOM attestations. arm64 builds natively on an
-# arm runner; the 32-bit glibc variants (arm/v7, 386) are emulated via QEMU.
+# then attaches provenance + SBOM attestations.
+#
+# Platforms: amd64 (native), arm64 (native arm runner), and arm/v7, 386,
+# ppc64le, s390x (glibc, cross-compiled on amd64). No emulation is used, so
+# QEMU is not needed.
 
 name: 🐳 Docker
 
@@ -97,24 +100,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 64-bit: ultra-light scratch/musl image (Dockerfile)
+          # 64-bit: ultra-light scratch/musl image (Dockerfile), built natively
           - platform: linux/amd64
             runner: ubuntu-latest
             dockerfile: ./Dockerfile
-            qemu: false
           - platform: linux/arm64
-            runner: ubuntu-24.04-arm   # native arm64 — no emulation
+            runner: ubuntu-24.04-arm
             dockerfile: ./Dockerfile
-            qemu: false
-          # 32-bit: glibc/Debian image (Dockerfile.full); emulated, but parallel
+          # glibc/Debian image (Dockerfile.full), cross-compiled on amd64
           - platform: linux/arm/v7
             runner: ubuntu-latest
             dockerfile: ./Dockerfile.full
-            qemu: true
           - platform: linux/386
             runner: ubuntu-latest
             dockerfile: ./Dockerfile.full
-            qemu: true
+          - platform: linux/ppc64le
+            runner: ubuntu-latest
+            dockerfile: ./Dockerfile.full
+          - platform: linux/s390x
+            runner: ubuntu-latest
+            dockerfile: ./Dockerfile.full
     steps:
       - name: 🛎️ Checkout
         uses: actions/checkout@v6
@@ -125,10 +130,6 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
         run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
-
-      - name: 🧰 Set up QEMU
-        if: matrix.qemu
-        uses: docker/setup-qemu-action@v4
 
       - name: 🧱 Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
